@@ -1180,8 +1180,105 @@ function renderClientWordCloud(containerId, wordCounts, labelType) {
 }
 
 // ==========================================================================
-// TAB 4: MODEL EVALUATION RENDERERS
+// TAB 4: MODEL EVALUATION (evaluateModel + renderers)
 // ==========================================================================
+
+/**
+ * Evaluates a trained Naive Bayes model on a test set.
+ * Returns metrics object consumed by renderModelResults().
+ */
+function evaluateModel(model, vectorizer, testSet) {
+    let TP = 0, FP = 0, TN = 0, FN = 0;
+
+    // Collect (label, score) pairs for ROC curve generation
+    const scores = []; // { label: 0|1, score: P(spam) }
+
+    for (const row of testSet) {
+        const vector = vectorizer.transform(row.cleaned_message);
+        const trueLabel = row.label === 'spam' ? 1 : 0;
+        const proba = model.predictProba(vector);
+        const spamProb = proba[1];
+        const predicted = spamProb >= 0.5 ? 1 : 0;
+
+        scores.push({ label: trueLabel, score: spamProb });
+
+        if (trueLabel === 1 && predicted === 1) TP++;
+        else if (trueLabel === 0 && predicted === 1) FP++;
+        else if (trueLabel === 0 && predicted === 0) TN++;
+        else if (trueLabel === 1 && predicted === 0) FN++;
+    }
+
+    const total = TP + FP + TN + FN;
+    const accuracy  = (TP + TN) / total;
+    const precision = TP + FP > 0 ? TP / (TP + FP) : 0;
+    const recall    = TP + FN > 0 ? TP / (TP + FN) : 0;
+    const f1_score  = precision + recall > 0 ? 2 * precision * recall / (precision + recall) : 0;
+
+    // Per-class metrics
+    const hamPrecision = TN + FN > 0 ? TN / (TN + FN) : 0;
+    const hamRecall    = TN + FP > 0 ? TN / (TN + FP) : 0;
+    const hamF1        = hamPrecision + hamRecall > 0 ? 2 * hamPrecision * hamRecall / (hamPrecision + hamRecall) : 0;
+    const hamSupport   = TN + FP;
+    const spamSupport  = TP + FN;
+
+    const classification_report = {
+        ham: { precision: hamPrecision, recall: hamRecall, f1_score: hamF1, support: hamSupport },
+        spam: { precision, recall, f1_score, support: spamSupport },
+        accuracy: accuracy,
+        'macro avg': {
+            precision: (hamPrecision + precision) / 2,
+            recall: (hamRecall + recall) / 2,
+            f1_score: (hamF1 + f1_score) / 2,
+            support: total
+        },
+        'weighted avg': {
+            precision: (hamPrecision * hamSupport + precision * spamSupport) / total,
+            recall: (hamRecall * hamSupport + recall * spamSupport) / total,
+            f1_score: (hamF1 * hamSupport + f1_score * spamSupport) / total,
+            support: total
+        }
+    };
+
+    // ROC Curve: sort by descending spam probability, sweep thresholds
+    scores.sort((a, b) => b.score - a.score);
+    const totalPos = scores.filter(s => s.label === 1).length;
+    const totalNeg = scores.filter(s => s.label === 0).length;
+
+    const fpr_arr = [0];
+    const tpr_arr = [0];
+    let cumTP = 0, cumFP = 0;
+
+    for (let i = 0; i < scores.length; i++) {
+        if (scores[i].label === 1) cumTP++;
+        else cumFP++;
+
+        // Only add a point when score changes or at end
+        const nextScore = i < scores.length - 1 ? scores[i + 1].score : -1;
+        if (scores[i].score !== nextScore) {
+            fpr_arr.push(totalNeg > 0 ? cumFP / totalNeg : 0);
+            tpr_arr.push(totalPos > 0 ? cumTP / totalPos : 0);
+        }
+    }
+    fpr_arr.push(1);
+    tpr_arr.push(1);
+
+    // AUC via trapezoidal rule
+    let auc = 0;
+    for (let i = 1; i < fpr_arr.length; i++) {
+        auc += (fpr_arr[i] - fpr_arr[i - 1]) * (tpr_arr[i] + tpr_arr[i - 1]) / 2;
+    }
+
+    return {
+        accuracy,
+        precision,
+        recall,
+        f1_score,
+        confusion_matrix: [[TN, FP], [FN, TP]],
+        classification_report,
+        roc_curve: { fpr: fpr_arr, tpr: tpr_arr, auc }
+    };
+}
+
 
 function renderModelResults(m) {
     const metricsRow = document.getElementById("model-metrics-row");
