@@ -295,45 +295,87 @@ class MultinomialNB {
         this.vocabSize = 0;
     }
     
+    /**
+     * Fit from an array of pre-computed dense vectors (legacy, high memory).
+     * Prefer fitIncremental for large datasets.
+     */
     fit(X_vectorized, y) {
         const nSamples = X_vectorized.length;
         this.vocabSize = X_vectorized[0].length;
-        
-        let hamCount = 0;
-        let spamCount = 0;
+
+        let hamCount = 0, spamCount = 0;
         const featureSums = [
-            new Array(this.vocabSize).fill(0),
-            new Array(this.vocabSize).fill(0)
+            new Float64Array(this.vocabSize),
+            new Float64Array(this.vocabSize)
         ];
-        
+
         for (let i = 0; i < nSamples; i++) {
             const label = y[i];
             const vector = X_vectorized[i];
             if (label === 0) hamCount++; else spamCount++;
-            
             for (let j = 0; j < this.vocabSize; j++) {
                 featureSums[label][j] += vector[j];
             }
         }
-        
+        this._finalizeFromSums(featureSums, hamCount, spamCount, nSamples);
+    }
+
+    /**
+     * Fit incrementally: processes one document at a time — no large X matrix.
+     * docs: array of {cleaned_message, label} objects.
+     * vec:  fitted TfidfVectorizer instance.
+     */
+    fitFromDocs(docs, vec) {
+        this.vocabSize = vec.vocabList.length;
+        let hamCount = 0, spamCount = 0;
+        const featureSums = [
+            new Float64Array(this.vocabSize),
+            new Float64Array(this.vocabSize)
+        ];
+
+        for (const doc of docs) {
+            const label = doc.label === 'spam' ? 1 : 0;
+            if (label === 0) hamCount++; else spamCount++;
+            // Sparse accumulation — only iterate words present in doc
+            const words = doc.cleaned_message.split(/\s+/).filter(w => w.length > 0);
+            const tf = {};
+            for (const w of words) {
+                if (vec.vocabulary[w] !== undefined) {
+                    tf[w] = (tf[w] || 0) + 1;
+                }
+            }
+            // Compute L2 norm first
+            let sqSum = 0;
+            for (const w in tf) {
+                const idx = vec.vocabulary[w];
+                const v = tf[w] * vec.idf[idx];
+                sqSum += v * v;
+            }
+            const norm = sqSum > 0 ? Math.sqrt(sqSum) : 1;
+            // Accumulate into featureSums (sparse — only touch non-zero entries)
+            for (const w in tf) {
+                const idx = vec.vocabulary[w];
+                featureSums[label][idx] += (tf[w] * vec.idf[idx]) / norm;
+            }
+        }
+        this._finalizeFromSums(featureSums, hamCount, spamCount, docs.length);
+    }
+
+    _finalizeFromSums(featureSums, hamCount, spamCount, nSamples) {
         this.classLogPrior[0] = Math.log(hamCount / nSamples);
         this.classLogPrior[1] = Math.log(spamCount / nSamples);
-        
         const classFeatureSums = [
             featureSums[0].reduce((a, b) => a + b, 0),
             featureSums[1].reduce((a, b) => a + b, 0)
         ];
-        
         this.featureLogProb = [
             new Array(this.vocabSize),
             new Array(this.vocabSize)
         ];
-        
         for (let label = 0; label < 2; label++) {
             const denominator = classFeatureSums[label] + this.alpha * this.vocabSize;
             for (let j = 0; j < this.vocabSize; j++) {
-                const numerator = featureSums[label][j] + this.alpha;
-                this.featureLogProb[label][j] = Math.log(numerator / denominator);
+                this.featureLogProb[label][j] = Math.log((featureSums[label][j] + this.alpha) / denominator);
             }
         }
     }
@@ -880,32 +922,30 @@ function setupEventListeners() {
             try {
                 // Seeded Split
                 const split = stratifiedSplit(cleaned_data, splitRatio, 42);
-                
-                // Fit TF-IDF Vectorizer
+
+                // Fit TF-IDF Vectorizer on cleaned training text
                 vectorizer = new TfidfVectorizer(maxFeatures);
                 vectorizer.fit(split.train.map(d => d.cleaned_message));
-                
-                // Vectorize split
-                const X_train = split.train.map(d => vectorizer.transform(d.cleaned_message));
-                const y_train = split.train.map(d => d.label === 'spam' ? 1 : 0);
-                
-                // Train NB
+
+                // Train NB incrementally (no dense X matrix — sparse accumulation)
                 trained_model = new MultinomialNB();
-                trained_model.fit(X_train, y_train);
-                
-                // Evaluate
+                trained_model.fitFromDocs(split.train, vectorizer);
+
+                // Evaluate on test set (also streaming, no dense matrix)
                 metrics = evaluateModel(trained_model, vectorizer, split.test);
                 model_name = 'naive_bayes';
-                
-                // Save locally
+
+                // Save to localStorage for session persistence
                 saveModelToLocalStorage(trained_model, vectorizer, model_name, metrics);
-                
+
                 showToast("Classifier training and caching complete!");
                 renderModelResults(metrics);
                 syncLocalWorkspaceStatus();
             } catch (err) {
                 console.error(err);
-                showToast("Model training failed.", true);
+                // Show actual error message for easier debugging
+                const errMsg = err && err.message ? err.message : String(err);
+                showToast(`Training error: ${errMsg}`, true);
                 loader.style.display = "none";
             }
         }, 100);
@@ -1194,10 +1234,38 @@ function evaluateModel(model, vectorizer, testSet) {
     const scores = []; // { label: 0|1, score: P(spam) }
 
     for (const row of testSet) {
-        const vector = vectorizer.transform(row.cleaned_message);
         const trueLabel = row.label === 'spam' ? 1 : 0;
-        const proba = model.predictProba(vector);
-        const spamProb = proba[1];
+
+        // Sparse log-prob prediction (no dense vector allocation)
+        const words = (row.cleaned_message || '').split(/\s+/).filter(w => w.length > 0);
+        const tf = {};
+        for (const w of words) {
+            if (vectorizer.vocabulary[w] !== undefined) {
+                tf[w] = (tf[w] || 0) + 1;
+            }
+        }
+        // L2 norm
+        let sqSum = 0;
+        for (const w in tf) {
+            const v = tf[w] * vectorizer.idf[vectorizer.vocabulary[w]];
+            sqSum += v * v;
+        }
+        const norm = sqSum > 0 ? Math.sqrt(sqSum) : 1;
+
+        // Compute log-probs directly (sparse)
+        const logProbs = [model.classLogPrior[0], model.classLogPrior[1]];
+        for (const w in tf) {
+            const idx = vectorizer.vocabulary[w];
+            const tfidfVal = (tf[w] * vectorizer.idf[idx]) / norm;
+            logProbs[0] += tfidfVal * model.featureLogProb[0][idx];
+            logProbs[1] += tfidfVal * model.featureLogProb[1][idx];
+        }
+
+        // Softmax to get probabilities
+        const maxLog = Math.max(logProbs[0], logProbs[1]);
+        const expHam  = Math.exp(logProbs[0] - maxLog);
+        const expSpam = Math.exp(logProbs[1] - maxLog);
+        const spamProb = expSpam / (expHam + expSpam);
         const predicted = spamProb >= 0.5 ? 1 : 0;
 
         scores.push({ label: trueLabel, score: spamProb });
@@ -1207,6 +1275,7 @@ function evaluateModel(model, vectorizer, testSet) {
         else if (trueLabel === 0 && predicted === 0) TN++;
         else if (trueLabel === 1 && predicted === 0) FN++;
     }
+
 
     const total = TP + FP + TN + FN;
     const accuracy  = (TP + TN) / total;
