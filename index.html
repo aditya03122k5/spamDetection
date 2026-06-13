@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Spam Detector AI — ML Workspace</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2>SpamDetector<span>AI</span></h2>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-tab="overview">
+                    <i class="fa-solid fa-chart-pie"></i> Overview
+                </a>
+                <a href="#" class="nav-item" data-tab="data-center">
+                    <i class="fa-solid fa-database"></i> Data Center
+                </a>
+                <a href="#" class="nav-item" data-tab="insights">
+                    <i class="fa-solid fa-chart-line"></i> Insights (EDA)
+                </a>
+                <a href="#" class="nav-item" data-tab="model-lab">
+                    <i class="fa-solid fa-flask"></i> Model Lab
+                </a>
+                <a href="#" class="nav-item" data-tab="playground">
+                    <i class="fa-solid fa-gamepad"></i> Playground
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="system-status-indicator">
+                    <span class="status-dot green"></span>
+                    <span class="status-text">Backend Connected</span>
+                </div>
+                <p class="copyright">Antigravity AI © 2026</p>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-left">
+                    <h1 id="page-title">Workspace Overview</h1>
+                    <p id="page-subtitle">Configure, train, and test spam classification models in real time.</p>
+                </div>
+                <div class="header-right">
+                    <div class="state-badges">
+                        <div class="state-badge" id="badge-data">
+                            <i class="fa-solid fa-database"></i> <span>Data: Empty</span>
+                        </div>
+                        <div class="state-badge" id="badge-model">
+                            <i class="fa-solid fa-microchip"></i> <span>Model: Untrained</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- TABS CONTAINER -->
+            <div class="tab-content-container">
+                
+                <!-- 1. OVERVIEW TAB -->
+                <section id="tab-overview" class="tab-pane active">
+                    <div class="grid-2-1">
+                        <div class="glass-card welcome-card">
+                            <h3>Welcome to SMS Spam Detector Workspace</h3>
+                            <p>This interactive workspace guides you through the full NLP and Machine Learning pipeline: downloading real-world SMS data, cleaning text, extracting TF-IDF features, training models, and deploying them to make real-time predictions.</p>
+                            
+                            <div class="lifecycle">
+                                <h4>NLP Workspace Lifecycle</h4>
+                                <div class="lifecycle-steps">
+                                    <div class="step">
+                                        <div class="step-num">1</div>
+                                        <h5>Load Data</h5>
+                                        <p>Download & ingest UCI dataset.</p>
+                                    </div>
+                                    <div class="step-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                                    <div class="step">
+                                        <div class="step-num">2</div>
+                                        <h5>Clean & Preprocess</h5>
+                                        <p>Stemming & Stopword removal.</p>
+                                    </div>
+                                    <div class="step-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                                    <div class="step">
+                                        <div class="step-num">3</div>
+                                        <h5>Train Model</h5>
+                                        <p>Fit Naive Bayes, LR or Random Forest.</p>
+                                    </div>
+                                    <div class="step-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                                    <div class="step">
+                                        <div class="step-num">4</div>
+                                        <h5>Analyze & Predict</h5>
+                                        <p>ROC analysis & live SMS tests.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="info-alert">
+                                <i class="fa-solid fa-circle-info"></i>
+                                <span><strong>Ready to start?</strong> Switch to the <strong>Data Center</strong> tab to fetch the dataset from the repository.</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-card status-card">
+                            <h3>Workspace Status</h3>
+                            <div class="status-list">
+                                <div class="status-item" id="status-data-loaded">
+                                    <div class="status-item-left">
+                                        <i class="fa-solid fa-circle-xmark red-icon"></i>
+                                        <div>
+                                            <strong>Dataset Ingestion</strong>
+                                            <span class="sub-text">Not Loaded into Memory</span>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" onclick="navigateToTab('data-center')">Go to Load</button>
+                                </div>
+                                <div class="status-item" id="status-text-preprocessed">
+                                    <div class="status-item-left">
+                                        <i class="fa-solid fa-circle-xmark red-icon"></i>
+                                        <div>
+                                            <strong>Text Preprocessing</strong>
+                                            <span class="sub-text">Dataset Not Cleaned</span>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" onclick="navigateToTab('data-center')">Go to Clean</button>
+                                </div>
+                                <div class="status-item" id="status-model-trained">
+                                    <div class="status-item-left">
+                                        <i class="fa-solid fa-circle-xmark red-icon"></i>
+                                        <div>
+                                            <strong>Classifier Training</strong>
+                                            <span class="sub-text">No Model Cached</span>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-secondary btn-sm" onclick="navigateToTab('model-lab')">Go to Lab</button>
+                                </div>
+                            </div>
+                            
+                            <div class="saved-models-box" id="saved-models-box" style="display:none;">
+                                <h4>Saved Models on Disk</h4>
+                                <div class="saved-models-list" id="saved-models-list">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. DATA CENTER TAB -->
+                <section id="tab-data-center" class="tab-pane">
+                    <div class="glass-card mb-4">
+                        <div class="card-header-actions">
+                            <div>
+                                <h3>Dataset Loading & Extraction</h3>
+                                <p class="text-muted">Fetch the SMS Spam Collection dataset from the UCI Machine Learning Repository.</p>
+                            </div>
+                            <button id="btn-load-dataset" class="btn btn-primary">
+                                <i class="fa-solid fa-download"></i> Download & Ingest Dataset
+                            </button>
+                        </div>
+                        
+                        <div id="data-loader-placeholder" style="display: none;"></div>
+                        
+                        <div id="data-preview-container" class="data-preview-box" style="display: none;">
+                            <h4>Dataset Preview (First 10 rows)</h4>
+                            <div class="table-responsive">
+                                <table class="custom-table" id="table-raw-preview">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 15%;">Label</th>
+                                            <th>Message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2-1">
+                        <div class="glass-card">
+                            <h3>Text Preprocessing Pipeline</h3>
+                            <p>Raw text is noisy. Our NLTK stemming pipeline applies the following normalization stages:</p>
+                            <ol class="prep-list">
+                                <li><strong>Lowercasing:</strong> Removes case sensitivity issues.</li>
+                                <li><strong>Link/HTML Stripping:</strong> Removes links and standard HTML tags.</li>
+                                <li><strong>Punctuation Clean-up:</strong> Keeps alphabetic characters only.</li>
+                                <li><strong>Stopwords Filtering:</strong> Eliminates semantic fillers (e.g., "and", "the").</li>
+                                <li><strong>Porter Stemming:</strong> Reduces words to roots (e.g., "winner" -> "win").</li>
+                            </ol>
+                            
+                            <div class="mt-4">
+                                <button id="btn-clean-dataset" class="btn btn-primary" style="display: none;">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Entire Dataset
+                                </button>
+                                <div id="clean-status-message" class="text-info mt-2" style="display: none;"></div>
+                            </div>
+                            
+                            <div id="clean-loader-placeholder" style="display: none;"></div>
+                            
+                            <div id="cleaned-preview-container" class="data-preview-box mt-4" style="display: none;">
+                                <h4>Cleaned Dataset Preview</h4>
+                                <div class="table-responsive">
+                                    <table class="custom-table" id="table-cleaned-preview">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 15%;">Label</th>
+                                                <th>Original Message</th>
+                                                <th>Cleaned (Stemmed) Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-card">
+                            <h3>Preprocessing Sandbox</h3>
+                            <p>Type any sentence to see how the preprocessing functions parse and stems it in real time.</p>
+                            <div class="form-group mt-3">
+                                <label for="sandbox-input">Input SMS Message:</label>
+                                <textarea id="sandbox-input" class="form-control" rows="4">Urgent! Call 09061701461 from landline. 2k bonus prize. Claim code: WY39. Standard rates apply.</textarea>
+                            </div>
+                            
+                            <div class="sandbox-results mt-4">
+                                <h5>Cleaned Result:</h5>
+                                <div class="sandbox-box" id="sandbox-output">
+                                    urgenti call landlin bonu prize claim code wy standard rate appli
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. INSIGHTS (EDA) TAB -->
+                <section id="tab-insights" class="tab-pane">
+                    <div id="eda-placeholder" class="glass-card text-center py-5">
+                        <i class="fa-solid fa-chart-simple fa-3x mb-3 text-muted"></i>
+                        <h3>Exploratory Data Analysis Locked</h3>
+                        <p>You must load and clean the dataset in the <strong>Data Center</strong> before insights can be visualized.</p>
+                        <button class="btn btn-primary mt-3" onclick="navigateToTab('data-center')">Go to Data Center</button>
+                    </div>
+
+                    <div id="eda-content" style="display: none;">
+                        <div class="stats-row mb-4">
+                            <div class="glass-card metric-item">
+                                <span class="metric-label">Ham (Legitimate) Messages</span>
+                                <span class="metric-val" id="eda-ham-count">0</span>
+                                <span class="metric-percentage" id="eda-ham-pct">0%</span>
+                            </div>
+                            <div class="glass-card metric-item">
+                                <span class="metric-label">Spam (Scam) Messages</span>
+                                <span class="metric-val text-red" id="eda-spam-count">0</span>
+                                <span class="metric-percentage text-red" id="eda-spam-pct">0%</span>
+                            </div>
+                            <div class="glass-card metric-item">
+                                <span class="metric-label">Avg. Ham Message Length</span>
+                                <span class="metric-val" id="eda-ham-len">0.0 ch</span>
+                            </div>
+                            <div class="glass-card metric-item">
+                                <span class="metric-label">Avg. Spam Message Length</span>
+                                <span class="metric-val text-red" id="eda-spam-len">0.0 ch</span>
+                            </div>
+                        </div>
+
+                        <div class="grid-2">
+                            <div class="glass-card">
+                                <h3>Class Distribution</h3>
+                                <div class="chart-container">
+                                    <canvas id="chart-class-distribution"></canvas>
+                                </div>
+                            </div>
+                            <div class="glass-card">
+                                <h3>Character Length Distribution</h3>
+                                <div class="chart-container">
+                                    <canvas id="chart-length-distribution"></canvas>
+                                </div>
+                                <p class="chart-insight mt-3"><i class="fa-solid fa-circle-info"></i> <strong>Insight:</strong> Spam messages show a clear statistical concentration at longer lengths (averaging 130+ chars) compared to ham.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid-2 mt-4">
+                            <div class="glass-card">
+                                <h3>Top 15 Most Common Words in Spam</h3>
+                                <div class="chart-container">
+                                    <canvas id="chart-top-spam-words"></canvas>
+                                </div>
+                            </div>
+                            <div class="glass-card">
+                                <h3>Top 15 Most Common Words in Ham</h3>
+                                <div class="chart-container">
+                                    <canvas id="chart-top-ham-words"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid-2 mt-4">
+                            <div class="glass-card text-center">
+                                <h3>Spam Word Cloud</h3>
+                                <div class="wordcloud-wrapper mt-3">
+                                    <img id="img-spam-wordcloud" class="img-wordcloud" alt="Spam Word Cloud Loading...">
+                                </div>
+                            </div>
+                            <div class="glass-card text-center">
+                                <h3>Ham Word Cloud</h3>
+                                <div class="wordcloud-wrapper mt-3">
+                                    <img id="img-ham-wordcloud" class="img-wordcloud" alt="Ham Word Cloud Loading...">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. MODEL LAB TAB -->
+                <section id="tab-model-lab" class="tab-pane">
+                    <div id="model-loader-warning" class="glass-card text-center py-5">
+                        <i class="fa-solid fa-flask-vial fa-3x mb-3 text-muted"></i>
+                        <h3>Model Lab Locked</h3>
+                        <p>You must clean the dataset in the <strong>Data Center</strong> before you can train classifier models.</p>
+                        <button class="btn btn-primary mt-3" onclick="navigateToTab('data-center')">Go to Data Center</button>
+                    </div>
+
+                    <div id="model-lab-content" style="display: none;" class="grid-1-2">
+                        <!-- Controls -->
+                        <div class="glass-card flex-column">
+                            <h3>Hyperparameter Tuning</h3>
+                            <p class="text-muted mb-4">Set configurations for the feature extractor and classifier.</p>
+                            
+                            <div class="form-group mb-3">
+                                <label for="select-model">Classifier Algorithm:</label>
+                                <select id="select-model" class="form-control">
+                                    <option value="naive_bayes">Multinomial Naive Bayes</option>
+                                    <option value="logistic_regression">Logistic Regression</option>
+                                    <option value="random_forest">Random Forest Classifier</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group mb-3">
+                                <label for="range-features">TF-IDF Max Features: <span id="label-features">3000</span></label>
+                                <input type="range" id="range-features" class="form-range" min="500" max="5000" step="500" value="3000">
+                                <span class="text-muted sub-text">Limits the vocabulary size used for learning.</span>
+                            </div>
+
+                            <div class="form-group mb-4">
+                                <label for="range-split">Test Split Size (%): <span id="label-split">20</span>%</label>
+                                <input type="range" id="range-split" class="form-range" min="10" max="40" step="5" value="20">
+                            </div>
+
+                            <button id="btn-train-model" class="btn btn-primary btn-block py-2">
+                                <i class="fa-solid fa-bolt"></i> Train Model Classifier
+                            </button>
+                        </div>
+
+                        <!-- Results -->
+                        <div class="flex-column gap-4">
+                            <!-- Metric cards -->
+                            <div class="stats-row" id="model-metrics-row" style="display: none;">
+                                <div class="glass-card metric-item text-center">
+                                    <span class="metric-label">Accuracy</span>
+                                    <span class="metric-val text-blue" id="metric-accuracy">0.00%</span>
+                                </div>
+                                <div class="glass-card metric-item text-center">
+                                    <span class="metric-label">Precision (Spam)</span>
+                                    <span class="metric-val text-blue" id="metric-precision">0.00%</span>
+                                </div>
+                                <div class="glass-card metric-item text-center">
+                                    <span class="metric-label">Recall (Spam)</span>
+                                    <span class="metric-val text-blue" id="metric-recall">0.00%</span>
+                                </div>
+                                <div class="glass-card metric-item text-center">
+                                    <span class="metric-label">F1-Score</span>
+                                    <span class="metric-val text-blue" id="metric-f1">0.00%</span>
+                                </div>
+                            </div>
+
+                            <div class="grid-2" id="model-charts-row" style="display: none;">
+                                <div class="glass-card">
+                                    <h3>Confusion Matrix</h3>
+                                    <div class="matrix-container mt-3">
+                                        <div class="matrix-grid">
+                                            <div class="matrix-header"></div>
+                                            <div class="matrix-header font-bold text-center">Predicted Ham</div>
+                                            <div class="matrix-header font-bold text-center">Predicted Spam</div>
+                                            
+                                            <div class="matrix-row-label font-bold">True Ham</div>
+                                            <div class="matrix-cell true-positive" id="cm-th-ph">0</div>
+                                            <div class="matrix-cell false-positive" id="cm-th-ps">0</div>
+                                            
+                                            <div class="matrix-row-label font-bold">True Spam</div>
+                                            <div class="matrix-cell false-negative" id="cm-ts-ph">0</div>
+                                            <div class="matrix-cell true-negative" id="cm-ts-ps">0</div>
+                                        </div>
+                                    </div>
+                                    <p class="chart-insight mt-3 text-muted sub-text"><i class="fa-solid fa-circle-question"></i> Diagonals indicate correct predictions. Upper-right represents False Positives (legitimate messages flagged as spam).</p>
+                                </div>
+
+                                <div class="glass-card">
+                                    <h3>ROC Curve (Receiver Operating Characteristic)</h3>
+                                    <div class="chart-container">
+                                        <canvas id="chart-roc-curve"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="glass-card" id="classification-report-card" style="display: none;">
+                                <h3>Classification Report Details</h3>
+                                <div class="table-responsive mt-3">
+                                    <table class="custom-table" id="table-class-report">
+                                        <thead>
+                                            <tr>
+                                                <th>Class</th>
+                                                <th>Precision</th>
+                                                <th>Recall</th>
+                                                <th>F1-Score</th>
+                                                <th>Support</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Dynamically filled -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. PLAYGROUND TAB -->
+                <section id="tab-playground" class="tab-pane">
+                    <div id="playground-warning" class="glass-card text-center py-5">
+                        <i class="fa-solid fa-triangle-exclamation fa-3x mb-3 text-yellow"></i>
+                        <h3>Playground Locked</h3>
+                        <p>No model is active in the workspace. Train a model in the <strong>Model Lab</strong> or load a saved model from disk.</p>
+                        <button class="btn btn-primary mt-3" onclick="navigateToTab('model-lab')">Go to Model Lab</button>
+                    </div>
+
+                    <div id="playground-content" style="display: none;" class="grid-2-1">
+                        <div class="glass-card">
+                            <h3>Real-Time SMS Testing Sandbox</h3>
+                            <p class="text-muted">Type or paste any SMS message below to classify it instantly.</p>
+                            
+                            <div class="form-group mt-3">
+                                <textarea id="predict-input" class="form-control" rows="6" placeholder="Type message to test here..."></textarea>
+                            </div>
+                            
+                            <div class="template-presets mt-3">
+                                <strong>Try a Preset Template:</strong>
+                                <div class="btn-group mt-2">
+                                    <button class="btn btn-secondary btn-sm" id="preset-ham">Ham (Lunch Invite)</button>
+                                    <button class="btn btn-secondary btn-sm" id="preset-spam">Spam (Prize Claim)</button>
+                                    <button class="btn btn-secondary btn-sm" id="preset-phish">Phishing (Bank Account)</button>
+                                </div>
+                            </div>
+
+                            <button id="btn-predict" class="btn btn-primary btn-block mt-4 py-2">
+                                <i class="fa-solid fa-shield-halved"></i> Run SMS Classification
+                            </button>
+                        </div>
+
+                        <div class="flex-column gap-4">
+                            <!-- Prediction Result -->
+                            <div class="glass-card text-center" id="predict-result-card" style="display: none;">
+                                <h3>Prediction Result</h3>
+                                
+                                <div id="result-banner" class="banner mb-4">
+                                    <h2 id="result-label">HAM (LEGITIMATE)</h2>
+                                    <p>Confidence: <span id="result-confidence">99.90%</span></p>
+                                </div>
+
+                                <div class="chart-container-sm">
+                                    <canvas id="chart-prediction-prob"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Keywords breakdown -->
+                            <div class="glass-card" id="predict-keywords-card" style="display: none;">
+                                <h3>Cleaned & Vocab Analysis</h3>
+                                <div class="mt-2">
+                                    <strong>Cleaned SMS:</strong>
+                                    <p class="code-text" id="predict-cleaned-msg">...</p>
+                                </div>
+                                <div class="mt-3">
+                                    <strong>Key words driving prediction:</strong>
+                                    <div class="tags-container" id="predict-tags-in">
+                                        <!-- Tags go here -->
+                                    </div>
+                                </div>
+                                <div class="mt-3">
+                                    <strong class="text-muted">Ignored words (not in dictionary):</strong>
+                                    <div class="tags-container" id="predict-tags-out">
+                                        <!-- Tags go here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check"></i> <span id="toast-message">Notification message here</span>
+    </div>
+
+    <!-- JS Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
