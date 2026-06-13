@@ -13,7 +13,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Custom Style -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
     <div class="app-container">
@@ -47,7 +47,7 @@
             <div class="sidebar-footer">
                 <div class="system-status-indicator">
                     <span class="status-dot green"></span>
-                    <span class="status-text">Backend Connected</span>
+                    <span class="status-text">Client-Side Mode</span>
                 </div>
                 <p class="copyright">Antigravity AI © 2026</p>
             </div>
@@ -315,14 +315,14 @@
                         <div class="grid-2 mt-4">
                             <div class="glass-card text-center">
                                 <h3>Spam Word Cloud</h3>
-                                <div class="wordcloud-wrapper mt-3">
-                                    <img id="img-spam-wordcloud" class="img-wordcloud" alt="Spam Word Cloud Loading...">
+                                <div class="wordcloud-wrapper mt-3" style="min-height: 200px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: var(--border-radius-md);">
+                                    <div id="div-spam-wordcloud"></div>
                                 </div>
                             </div>
                             <div class="glass-card text-center">
                                 <h3>Ham Word Cloud</h3>
-                                <div class="wordcloud-wrapper mt-3">
-                                    <img id="img-ham-wordcloud" class="img-wordcloud" alt="Ham Word Cloud Loading...">
+                                <div class="wordcloud-wrapper mt-3" style="min-height: 200px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: var(--border-radius-md);">
+                                    <div id="div-ham-wordcloud"></div>
                                 </div>
                             </div>
                         </div>
@@ -523,6 +523,6 @@
     </div>
 
     <!-- JS Logic -->
-    <script src="app.js"></script>
+    <script src="static/app.js"></script>
 </body>
 </html>

@@ -1,29 +1,498 @@
 // ==========================================================================
-// APP STATE & GLOBALS
+// CLIENT-SIDE NLTK STOPWORDS & PORTER STEMMER
 // ==========================================================================
-let currentTab = 'overview';
-let charts = {}; // Store Chart.js instances to destroy them before re-drawing
+
+const STOPWORDS = new Set([
+    "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves",
+    "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their",
+    "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are",
+    "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an",
+    "the", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about",
+    "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up",
+    "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when",
+    "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor",
+    "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"
+]);
+
+// Porter Stemmer implementation in Javascript
+function stem(word) {
+    let w = word.toLowerCase();
+    if (w.length < 3) return w;
+
+    const step1a = (str) => {
+        if (str.endsWith('sses')) return str.slice(0, -2);
+        if (str.endsWith('ies')) return str.slice(0, -2) + 'i';
+        if (str.endsWith('ss')) return str;
+        if (str.endsWith('s') && !str.endsWith('us') && !str.endsWith('as') && !str.endsWith('is')) return str.slice(0, -1);
+        return str;
+    };
+
+    const isConsonant = (str, i) => {
+        let c = str[i];
+        if ('aeiou'.includes(c)) return false;
+        if (c === 'y') {
+            if (i === 0) return true;
+            return !isConsonant(str, i - 1);
+        }
+        return true;
+    };
+
+    const getM = (str) => {
+        let count = 0;
+        let form = '';
+        for (let i = 0; i < str.length; i++) {
+            form += isConsonant(str, i) ? 'c' : 'v';
+        }
+        let compressed = '';
+        for (let i = 0; i < form.length; i++) {
+            if (i === 0 || form[i] !== form[i-1]) {
+                compressed += form[i];
+            }
+        }
+        for (let i = 0; i < compressed.length - 1; i++) {
+            if (compressed[i] === 'v' && compressed[i+1] === 'c') {
+                count++;
+            }
+        }
+        return count;
+    };
+
+    const hasVowel = (str) => {
+        for (let i = 0; i < str.length; i++) {
+            if (!isConsonant(str, i)) return true;
+        }
+        return false;
+    };
+
+    const endsWithDoubleConsonant = (str) => {
+        if (str.length < 2) return false;
+        let c1 = str[str.length - 1];
+        let c2 = str[str.length - 2];
+        if (c1 !== c2) return false;
+        return isConsonant(str, str.length - 1);
+    };
+
+    const endsWithCvc = (str) => {
+        if (str.length < 3) return false;
+        let c1 = str[str.length - 1];
+        let v = str[str.length - 2];
+        let c2 = str[str.length - 3];
+        if (isConsonant(str, str.length-1) && !isConsonant(str, str.length-2) && isConsonant(str, str.length-3)) {
+            if (!'wxy'.includes(c1)) return true;
+        }
+        return false;
+    };
+
+    w = step1a(w);
+
+    let step1b_done = false;
+    if (w.endsWith('eed')) {
+        let stem = w.slice(0, -3);
+        if (getM(stem) > 0) w = stem + 'ee';
+    } else if (w.endsWith('ed')) {
+        let stem = w.slice(0, -2);
+        if (hasVowel(stem)) {
+            w = stem;
+            step1b_done = true;
+        }
+    } else if (w.endsWith('ing')) {
+        let stem = w.slice(0, -3);
+        if (hasVowel(stem)) {
+            w = stem;
+            step1b_done = true;
+        }
+    }
+
+    if (step1b_done) {
+        if (w.endsWith('at') || w.endsWith('bl') || w.endsWith('iz')) {
+            w += 'e';
+        } else if (endsWithDoubleConsonant(w) && !w.endsWith('l') && !w.endsWith('s') && !w.endsWith('z')) {
+            w = w.slice(0, -1);
+        } else if (getM(w) === 1 && endsWithCvc(w)) {
+            w += 'e';
+        }
+    }
+
+    if (w.endsWith('y') && hasVowel(w.slice(0, -1))) {
+        w = w.slice(0, -1) + 'i';
+    }
+
+    const step2_replacements = {
+        'ational': 'ate', 'tional': 'tion', 'enci': 'ence', 'anci': 'ance',
+        'izer': 'ize', 'abli': 'able', 'alli': 'al', 'entli': 'ent',
+        'eli': 'e', 'ousli': 'ous', 'ization': 'ize', 'ation': 'ate',
+        'ator': 'ate', 'alism': 'al', 'iveness': 'ive', 'fulness': 'ful',
+        'ousness': 'ous', 'aliti': 'al', 'iviti': 'ive', 'biliti': 'ble'
+    };
+    for (let suffix in step2_replacements) {
+        if (w.endsWith(suffix)) {
+            let stem = w.slice(0, -suffix.length);
+            if (getM(stem) > 0) {
+                w = stem + step2_replacements[suffix];
+                break;
+            }
+        }
+    }
+
+    const step3_replacements = {
+        'icate': 'ic', 'ative': '', 'alize': 'al', 'iciti': 'ic',
+        'ical': 'ic', 'ful': '', 'ness': ''
+    };
+    for (let suffix in step3_replacements) {
+        if (w.endsWith(suffix)) {
+            let stem = w.slice(0, -suffix.length);
+            if (getM(stem) > 0) {
+                w = stem + step3_replacements[suffix];
+                break;
+            }
+        }
+    }
+
+    const step4_suffixes = [
+        'al', 'ance', 'ence', 'er', 'ic', 'able', 'ible', 'ant', 'ement',
+        'ment', 'ent', 'ou', 'ism', 'ate', 'iti', 'ous', 'ive', 'ize'
+    ];
+    let step4_done = false;
+    for (let suffix of step4_suffixes) {
+        if (w.endsWith(suffix)) {
+            let stem = w.slice(0, -suffix.length);
+            if (getM(stem) > 1) {
+                w = stem;
+                step4_done = true;
+            }
+            break;
+        }
+    }
+    if (!step4_done) {
+        if (w.endsWith('ion')) {
+            let stem = w.slice(0, -3);
+            let last = stem[stem.length - 1];
+            if (getM(stem) > 1 && (last === 's' || last === 't')) {
+                w = stem;
+            }
+        }
+    }
+
+    if (w.endsWith('e')) {
+        let stem = w.slice(0, -1);
+        let m = getM(stem);
+        if (m > 1 || (m === 1 && !endsWithCvc(stem))) {
+            w = stem;
+        }
+    }
+
+    if (w.endsWith('l') && endsWithDoubleConsonant(w) && getM(w) > 1) {
+        w = w.slice(0, -1);
+    }
+
+    return w;
+}
+
+function cleanText(text) {
+    if (typeof text !== 'string') return '';
+    let cleaned = text.toLowerCase();
+    cleaned = cleaned.replace(/<.*?>/g, ''); // HTML tags
+    cleaned = cleaned.replace(/https?:\/\/\S+|www\.\S+/g, ''); // URLs
+    cleaned = cleaned.replace(/\S+@\S+/g, ''); // Emails
+    cleaned = cleaned.replace(/[^a-zA-Z\s]/g, ' '); // Letters only
+    let words = cleaned.split(/\s+/);
+    let resultWords = [];
+    for (let word of words) {
+        if (word.length > 1 && !STOPWORDS.has(word)) {
+            resultWords.push(stem(word));
+        }
+    }
+    return resultWords.join(' ');
+}
 
 // ==========================================================================
-// INITIALIZATION
+// TF-IDF VECTORIZER IMPLEMENTATION
 // ==========================================================================
+
+class TfidfVectorizer {
+    constructor(maxFeatures = 3000) {
+        this.maxFeatures = maxFeatures;
+        this.vocabulary = {};
+        this.vocabList = [];
+        this.idf = [];
+    }
+    
+    fit(documents) {
+        const df = {};
+        documents.forEach(doc => {
+            const words = doc.split(/\s+/).filter(w => w.length > 0);
+            const unique = new Set(words);
+            unique.forEach(w => {
+                df[w] = (df[w] || 0) + 1;
+            });
+        });
+        
+        // Sort vocabulary by DF descending, then alphabetically ascending
+        const sortedWords = Object.keys(df).sort((a, b) => {
+            if (df[b] !== df[a]) {
+                return df[b] - df[a];
+            }
+            return a.localeCompare(b);
+        }).slice(0, this.maxFeatures);
+        
+        this.vocabList = sortedWords;
+        this.vocabulary = {};
+        sortedWords.forEach((word, index) => {
+            this.vocabulary[word] = index;
+        });
+        
+        // Compute IDF using Scikit-Learn smooth formula
+        const n = documents.length;
+        this.idf = new Array(sortedWords.length);
+        sortedWords.forEach((word, index) => {
+            const documentFrequency = df[word];
+            this.idf[index] = Math.log((1 + n) / (1 + documentFrequency)) + 1;
+        });
+    }
+    
+    transform(docText) {
+        const words = docText.split(/\s+/).filter(w => w.length > 0);
+        const tf = {};
+        words.forEach(w => {
+            if (this.vocabulary[w] !== undefined) {
+                tf[w] = (tf[w] || 0) + 1;
+            }
+        });
+        
+        const vector = new Array(this.vocabList.length).fill(0);
+        let sqSum = 0;
+        
+        this.vocabList.forEach((word, index) => {
+            const termFreq = tf[word] || 0;
+            if (termFreq > 0) {
+                const tfidfValue = termFreq * this.idf[index];
+                vector[index] = tfidfValue;
+                sqSum += tfidfValue * tfidfValue;
+            }
+        });
+        
+        // L2 normalization
+        if (sqSum > 0) {
+            const norm = Math.sqrt(sqSum);
+            for (let i = 0; i < vector.length; i++) {
+                vector[i] = vector[i] / norm;
+            }
+        }
+        
+        return vector;
+    }
+}
+
+// ==========================================================================
+// MULTINOMIAL NAIVE BAYES IMPLEMENTATION
+// ==========================================================================
+
+class MultinomialNB {
+    constructor(alpha = 1.0) {
+        this.alpha = alpha;
+        this.classLogPrior = [0, 0]; // [ham, spam]
+        this.featureLogProb = []; // [2, vocab_size]
+        this.vocabSize = 0;
+    }
+    
+    fit(X_vectorized, y) {
+        const nSamples = X_vectorized.length;
+        this.vocabSize = X_vectorized[0].length;
+        
+        let hamCount = 0;
+        let spamCount = 0;
+        const featureSums = [
+            new Array(this.vocabSize).fill(0),
+            new Array(this.vocabSize).fill(0)
+        ];
+        
+        for (let i = 0; i < nSamples; i++) {
+            const label = y[i];
+            const vector = X_vectorized[i];
+            if (label === 0) hamCount++; else spamCount++;
+            
+            for (let j = 0; j < this.vocabSize; j++) {
+                featureSums[label][j] += vector[j];
+            }
+        }
+        
+        this.classLogPrior[0] = Math.log(hamCount / nSamples);
+        this.classLogPrior[1] = Math.log(spamCount / nSamples);
+        
+        const classFeatureSums = [
+            featureSums[0].reduce((a, b) => a + b, 0),
+            featureSums[1].reduce((a, b) => a + b, 0)
+        ];
+        
+        this.featureLogProb = [
+            new Array(this.vocabSize),
+            new Array(this.vocabSize)
+        ];
+        
+        for (let label = 0; label < 2; label++) {
+            const denominator = classFeatureSums[label] + this.alpha * this.vocabSize;
+            for (let j = 0; j < this.vocabSize; j++) {
+                const numerator = featureSums[label][j] + this.alpha;
+                this.featureLogProb[label][j] = Math.log(numerator / denominator);
+            }
+        }
+    }
+    
+    predictLogProbs(vector) {
+        const logProbs = [this.classLogPrior[0], this.classLogPrior[1]];
+        for (let label = 0; label < 2; label++) {
+            for (let j = 0; j < this.vocabSize; j++) {
+                if (vector[j] > 0) {
+                    logProbs[label] += vector[j] * this.featureLogProb[label][j];
+                }
+            }
+        }
+        return logProbs;
+    }
+    
+    predictProba(vector) {
+        const logProbs = this.predictLogProbs(vector);
+        const maxLog = Math.max(logProbs[0], logProbs[1]);
+        const expHam = Math.exp(logProbs[0] - maxLog);
+        const expSpam = Math.exp(logProbs[1] - maxLog);
+        const total = expHam + expSpam;
+        return [expHam / total, expSpam / total];
+    }
+    
+    predict(vector) {
+        const logProbs = this.predictLogProbs(vector);
+        return logProbs[1] > logProbs[0] ? 1 : 0;
+    }
+}
+
+// ==========================================================================
+// SEEDED RANDOM & SHUFFLE FOR TRAINING CONSISTENCY
+// ==========================================================================
+
+class SeededRandom {
+    constructor(seed) {
+        this.seed = seed;
+    }
+    next() {
+        this.seed = (this.seed * 9301 + 49297) % 233280;
+        return this.seed / 233280;
+    }
+}
+
+function seededShuffle(array, seed) {
+    const rng = new SeededRandom(seed);
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng.next() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+function stratifiedSplit(data, testRatio, seed) {
+    const hams = data.filter(d => d.label === 'ham');
+    const spams = data.filter(d => d.label === 'spam');
+    
+    const shuffledHams = seededShuffle(hams, seed);
+    const shuffledSpams = seededShuffle(spams, seed);
+    
+    const hamTestCount = Math.floor(shuffledHams.length * testRatio);
+    const spamTestCount = Math.floor(shuffledSpams.length * testRatio);
+    
+    const testSet = [
+        ...shuffledHams.slice(0, hamTestCount),
+        ...shuffledSpams.slice(0, spamTestCount)
+    ];
+    
+    const trainSet = [
+        ...shuffledHams.slice(hamTestCount),
+        ...shuffledSpams.slice(spamTestCount)
+    ];
+    
+    return {
+        train: seededShuffle(trainSet, seed),
+        test: seededShuffle(testSet, seed)
+    };
+}
+
+// ==========================================================================
+// DATASET LOADING (GITHUB PAGES COMPATIBLE)
+// ==========================================================================
+
+/**
+ * Loads the SMS Spam Collection dataset.
+ * On GitHub Pages: fetches from the raw GitHub content URL.
+ * On local Flask server: falls back to /data/SMSSpamCollection.
+ */
+async function loadDatasetFromGithub() {
+    // Primary URL: raw GitHub content (works on GitHub Pages)
+    const GITHUB_RAW_URL = "https://raw.githubusercontent.com/aditya03122k5/spamDetection/main/data/SMSSpamCollection";
+    // Fallback URL: local Flask server
+    const LOCAL_URL = "/data/SMSSpamCollection";
+
+    let text = null;
+
+    // Try primary URL first
+    try {
+        const resp = await fetch(GITHUB_RAW_URL);
+        if (resp.ok) {
+            text = await resp.text();
+        }
+    } catch (e) {
+        console.warn("GitHub raw fetch failed, trying local fallback.", e);
+    }
+
+    // If primary failed, try local fallback
+    if (!text) {
+        const resp = await fetch(LOCAL_URL);
+        if (!resp.ok) throw new Error(`Failed to load dataset: HTTP ${resp.status}`);
+        text = await resp.text();
+    }
+
+    // Parse TSV format: label\tmessage
+    const lines = text.trim().split('\n');
+    const parsed = [];
+    for (const line of lines) {
+        const tab = line.indexOf('\t');
+        if (tab === -1) continue;
+        const label = line.slice(0, tab).trim().toLowerCase();
+        const message = line.slice(tab + 1).trim();
+        if ((label === 'ham' || label === 'spam') && message.length > 0) {
+            parsed.push({ label, message });
+        }
+    }
+
+    if (parsed.length === 0) throw new Error("Dataset parsed but no valid rows found.");
+    return parsed;
+}
+
+// ==========================================================================
+// GLOBAL APPLICATION STATE (IN-BROWSER WORKSPACE)
+// ==========================================================================
+
+let currentTab = 'overview';
+let charts = {};
+
+let raw_data = null;
+let cleaned_data = null;
+let trained_model = null;
+let vectorizer = null;
+let metrics = null;
+let model_name = null;
+
+// Initialize app elements
 document.addEventListener("DOMContentLoaded", () => {
-    // Set up navigation
     setupNavigation();
-    
-    // Initial workspace status check
-    fetchStatus();
-    
-    // Bind Event Listeners
     setupEventListeners();
+    syncLocalWorkspaceStatus();
 });
 
 // ==========================================================================
-// NAVIGATION HANDLERS
+// TABS CONTROLS
 // ==========================================================================
+
 function setupNavigation() {
-    const navItems = document.querySelectorAll(".nav-item");
-    navItems.forEach(item => {
+    document.querySelectorAll(".nav-item").forEach(item => {
         item.addEventListener("click", (e) => {
             e.preventDefault();
             const tabId = item.getAttribute("data-tab");
@@ -33,11 +502,9 @@ function setupNavigation() {
 }
 
 function navigateToTab(tabId) {
-    // Remove active class from menu items & panes
     document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
     document.querySelectorAll(".tab-pane").forEach(el => el.classList.remove("active"));
     
-    // Add active class
     const selectedNavItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
     const selectedPane = document.getElementById(`tab-${tabId}`);
     
@@ -46,14 +513,12 @@ function navigateToTab(tabId) {
         selectedPane.classList.add("active");
         currentTab = tabId;
         
-        // Update headers
         updateHeaderInfo(tabId);
         
-        // Refresh tab-specific data if needed
-        if (tabId === 'insights') {
-            fetchInsights();
+        if (tabId === 'insights' && cleaned_data) {
+            renderInsightsTab();
         } else if (tabId === 'overview') {
-            fetchStatus();
+            syncLocalWorkspaceStatus();
         }
     }
 }
@@ -65,23 +530,23 @@ function updateHeaderInfo(tabId) {
     const meta = {
         'overview': {
             title: "Workspace Overview",
-            subtitle: "Configure, train, and test spam classification models in real time."
+            subtitle: "Configure, train, and test spam classification models client-side."
         },
         'data-center': {
             title: "Data Ingestion & Cleaning",
-            subtitle: "Download the UCI dataset and preprocess raw text labels."
+            subtitle: "Load the UCI SMS dataset and pre-process texts locally."
         },
         'insights': {
             title: "Exploratory Insights (EDA)",
-            subtitle: "Statistical distributions and term frequencies of the dataset."
+            subtitle: "View distribution donut charts, histograms, and styled word clouds."
         },
         'model-lab': {
             title: "Model Training Lab",
-            subtitle: "Tune classifier hyperparameters, evaluate precision/recall, and analyze ROC curves."
+            subtitle: "Train a Multinomial Naive Bayes classifier and evaluate performance."
         },
         'playground': {
             title: "SMS Predictor Playground",
-            subtitle: "Type custom messages or test presets with live ML inference."
+            subtitle: "Execute live predictions in our interactive browser-sandbox."
         }
     };
     
@@ -92,56 +557,81 @@ function updateHeaderInfo(tabId) {
 }
 
 // ==========================================================================
-// UI HELPER FUNCTIONS: TOASTS & SPINNERS
+// STATE MANAGEMENT & CACHING (LOCALSTORAGE)
 // ==========================================================================
-function showToast(message, isError = false) {
-    const toast = document.getElementById("toast");
-    const toastMsg = document.getElementById("toast-message");
+
+function syncLocalWorkspaceStatus() {
+    const status = {
+        raw_data_loaded: raw_data !== null,
+        raw_data_size: raw_data ? raw_data.length : 0,
+        cleaned_data_loaded: cleaned_data !== null,
+        model_trained: trained_model !== null,
+        model_name: model_name,
+        metrics: metrics,
+        saved_models: getLocalStorageSavedModels()
+    };
     
-    toastMsg.textContent = message;
-    
-    if (isError) {
-        toast.classList.add("toast-error");
-        toast.querySelector("i").className = "fa-solid fa-circle-exclamation";
-    } else {
-        toast.classList.remove("toast-error");
-        toast.querySelector("i").className = "fa-solid fa-circle-check";
+    updateStateBadges(status);
+    updateOverviewStatusCard(status);
+    syncTabsAccess(status);
+}
+
+function getLocalStorageSavedModels() {
+    const saved = [];
+    if (localStorage.getItem("spam_model_naive_bayes")) {
+        saved.push("naive_bayes");
     }
-    
-    toast.classList.add("show");
-    
-    setTimeout(() => {
-        toast.classList.remove("show");
-    }, 4000);
+    return saved;
 }
 
-function showLoading(elementId, text = "Loading...") {
-    const el = document.getElementById(elementId);
-    el.innerHTML = `
-        <div class="spinner-wrapper">
-            <div class="spinner"></div>
-            <p class="text-muted font-bold">${text}</p>
-        </div>
-    `;
-    el.style.display = "block";
-}
-
-// ==========================================================================
-// API CALLS: STATUS & STATE SYNC
-// ==========================================================================
-async function fetchStatus() {
+function saveModelToLocalStorage(model, vectorizer, modelType, evalMetrics) {
     try {
-        const res = await fetch("/api/status");
-        const status = await res.json();
-        
-        updateStateBadges(status);
-        updateOverviewStatusCard(status);
-        syncTabsAccess(status);
+        const payload = {
+            model_name: modelType,
+            vocabList: vectorizer.vocabList,
+            vocabulary: vectorizer.vocabulary,
+            idf: vectorizer.idf,
+            classLogPrior: model.classLogPrior,
+            featureLogProb: model.featureLogProb,
+            metrics: evalMetrics
+        };
+        localStorage.setItem(`spam_model_${modelType}`, JSON.stringify(payload));
+        localStorage.setItem("spam_active_model_type", modelType);
     } catch (err) {
-        console.error("Failed to fetch status:", err);
-        showToast("Error connecting to backend server.", true);
+        console.error("Local storage error:", err);
     }
 }
+
+function loadModelFromLocalStorage(modelType) {
+    try {
+        const item = localStorage.getItem(`spam_model_${modelType}`);
+        if (!item) return false;
+        
+        const payload = JSON.parse(item);
+        
+        vectorizer = new TfidfVectorizer(payload.vocabList.length);
+        vectorizer.vocabList = payload.vocabList;
+        vectorizer.vocabulary = payload.vocabulary;
+        vectorizer.idf = payload.idf;
+        
+        trained_model = new MultinomialNB();
+        trained_model.vocabSize = payload.vocabList.length;
+        trained_model.classLogPrior = payload.classLogPrior;
+        trained_model.featureLogProb = payload.featureLogProb;
+        
+        model_name = payload.model_name;
+        metrics = payload.metrics;
+        
+        return true;
+    } catch (err) {
+        console.error("Failed to restore cached model:", err);
+        return false;
+    }
+}
+
+// ==========================================================================
+// OVERVIEW RENDERERS
+// ==========================================================================
 
 function updateStateBadges(status) {
     const badgeData = document.getElementById("badge-data");
@@ -156,9 +646,7 @@ function updateStateBadges(status) {
     }
     
     if (status.model_trained) {
-        let displayName = status.model_name === 'naive_bayes' ? 'Naive Bayes' : 
-                          (status.model_name === 'logistic_regression' ? 'Logistic Reg.' : 'Random Forest');
-        badgeModel.innerHTML = `<i class="fa-solid fa-microchip text-blue"></i> <span>Model: ${displayName}</span>`;
+        badgeModel.innerHTML = `<i class="fa-solid fa-microchip text-blue"></i> <span>Model: Naive Bayes</span>`;
         badgeModel.classList.add("active");
     } else {
         badgeModel.innerHTML = `<i class="fa-solid fa-microchip"></i> <span>Model: Untrained</span>`;
@@ -167,7 +655,7 @@ function updateStateBadges(status) {
 }
 
 function updateOverviewStatusCard(status) {
-    // Data loaded item
+    // Dataset loaded item
     const dataItem = document.getElementById("status-data-loaded");
     if (status.raw_data_loaded) {
         dataItem.querySelector("i").className = "fa-solid fa-circle-check green-icon";
@@ -194,10 +682,8 @@ function updateOverviewStatusCard(status) {
     // Model trained item
     const modelItem = document.getElementById("status-model-trained");
     if (status.model_trained) {
-        let displayName = status.model_name === 'naive_bayes' ? 'Multinomial Naive Bayes' : 
-                          (status.model_name === 'logistic_regression' ? 'Logistic Regression' : 'Random Forest');
         modelItem.querySelector("i").className = "fa-solid fa-circle-check green-icon";
-        modelItem.querySelector(".sub-text").textContent = `Active model: ${displayName}`;
+        modelItem.querySelector(".sub-text").textContent = "Active model: Multinomial Naive Bayes";
         modelItem.querySelector("button").textContent = "View Model";
     } else {
         modelItem.querySelector("i").className = "fa-solid fa-circle-xmark red-icon";
@@ -205,7 +691,7 @@ function updateOverviewStatusCard(status) {
         modelItem.querySelector("button").textContent = "Go to Lab";
     }
     
-    // Saved models block
+    // LocalStorage saved models
     const savedBox = document.getElementById("saved-models-box");
     const savedList = document.getElementById("saved-models-list");
     
@@ -214,14 +700,11 @@ function updateOverviewStatusCard(status) {
         savedList.innerHTML = "";
         
         status.saved_models.forEach(mType => {
-            let displayName = mType === 'naive_bayes' ? 'Naive Bayes' : 
-                              (mType === 'logistic_regression' ? 'Logistic Regression' : 'Random Forest');
-            
             const div = document.createElement("div");
             div.className = "saved-model-item";
             div.innerHTML = `
-                <span><strong>${displayName}</strong> (.pkl)</span>
-                <button class="btn btn-secondary btn-sm" onclick="loadSavedModel('${mType}')">Retrieve</button>
+                <span><strong>Naive Bayes</strong> (Cached)</span>
+                <button class="btn btn-secondary btn-sm" onclick="retrieveCachedModel('${mType}')">Retrieve</button>
             `;
             savedList.appendChild(div);
         });
@@ -230,175 +713,136 @@ function updateOverviewStatusCard(status) {
     }
 }
 
+function retrieveCachedModel(modelType) {
+    if (loadModelFromLocalStorage(modelType)) {
+        showToast("Model restored from browser cache!");
+        syncLocalWorkspaceStatus();
+    } else {
+        showToast("Failed to retrieve cached model.", true);
+    }
+}
+
 function syncTabsAccess(status) {
     // 1. Data Center elements
     const btnClean = document.getElementById("btn-clean-dataset");
-    if (status.raw_data_loaded) {
-        btnClean.style.display = "inline-flex";
-    } else {
-        btnClean.style.display = "none";
-    }
+    btnClean.style.display = status.raw_data_loaded ? "inline-flex" : "none";
     
-    // 2. Insights (EDA) locking
-    const edaPlaceholder = document.getElementById("eda-placeholder");
-    const edaContent = document.getElementById("eda-content");
-    if (status.cleaned_data_loaded) {
-        edaPlaceholder.style.display = "none";
-        edaContent.style.display = "block";
-    } else {
-        edaPlaceholder.style.display = "block";
-        edaContent.style.display = "none";
-    }
+    // 2. Insights locking
+    document.getElementById("eda-placeholder").style.display = status.cleaned_data_loaded ? "none" : "block";
+    document.getElementById("eda-content").style.display = status.cleaned_data_loaded ? "block" : "none";
     
     // 3. Model Lab locking
-    const modelWarning = document.getElementById("model-loader-warning");
-    const modelContent = document.getElementById("model-lab-content");
-    if (status.cleaned_data_loaded) {
-        modelWarning.style.display = "none";
-        modelContent.style.display = "grid";
-    } else {
-        modelWarning.style.display = "block";
-        modelContent.style.display = "none";
-    }
+    document.getElementById("model-loader-warning").style.display = status.cleaned_data_loaded ? "none" : "block";
+    document.getElementById("model-lab-content").style.display = status.cleaned_data_loaded ? "grid" : "none";
     
     // 4. Playground locking
-    const playWarning = document.getElementById("playground-warning");
-    const playContent = document.getElementById("playground-content");
-    if (status.model_trained) {
-        playWarning.style.display = "none";
-        playContent.style.display = "grid";
-        
-        // Show live prediction panel details
-        document.getElementById("predict-result-card").style.display = "none";
-        document.getElementById("predict-keywords-card").style.display = "none";
+    document.getElementById("playground-warning").style.display = status.model_trained ? "none" : "block";
+    document.getElementById("playground-content").style.display = status.model_trained ? "grid" : "none";
+    
+    // Auto restore layouts if we have active metrics
+    if (status.model_trained && status.metrics && document.getElementById("model-metrics-row").style.display === "none") {
+        renderModelResults(status.metrics);
+    }
+}
+
+// ==========================================================================
+// TOASTS & LOADING INDICATORS
+// ==========================================================================
+
+function showToast(message, isError = false) {
+    const toast = document.getElementById("toast");
+    const toastMsg = document.getElementById("toast-message");
+    
+    toastMsg.textContent = message;
+    
+    if (isError) {
+        toast.classList.add("toast-error");
+        toast.querySelector("i").className = "fa-solid fa-circle-exclamation";
     } else {
-        playWarning.style.display = "block";
-        playContent.style.display = "none";
+        toast.classList.remove("toast-error");
+        toast.querySelector("i").className = "fa-solid fa-circle-check";
     }
     
-    // Auto-load previews if loaded
-    if (status.raw_data_loaded && document.getElementById("table-raw-preview").querySelector("tbody").children.length === 0) {
-        // We will make a simple fetch call or trigger load
-        triggerSilentReloadData();
-    }
+    toast.classList.add("show");
+    setTimeout(() => { toast.classList.remove("show"); }, 4000);
 }
 
-async function triggerSilentReloadData() {
-    try {
-        const res = await fetch("/api/load_data", { method: 'POST' });
-        const data = await res.json();
-        if (data.status === 'success') {
-            renderRawTable(data.preview);
-        }
-    } catch(err) {
-        console.error(err);
-    }
-}
-
-// Helper to trigger load model from disk
-async function loadSavedModel(modelType) {
-    try {
-        const res = await fetch("/api/load_saved_model", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model_type: modelType })
-        });
-        const result = await res.json();
-        if (result.status === 'success') {
-            showToast(`Loaded ${modelType} classifier from disk!`);
-            fetchStatus();
-        } else {
-            showToast(result.message, true);
-        }
-    } catch (err) {
-        console.error(err);
-        showToast("Error fetching saved model artifacts.", true);
-    }
+function showLoading(elementId, text = "Loading...") {
+    const el = document.getElementById(elementId);
+    el.innerHTML = `
+        <div class="spinner-wrapper">
+            <div class="spinner"></div>
+            <p class="text-muted font-bold">${text}</p>
+        </div>
+    `;
+    el.style.display = "block";
 }
 
 // ==========================================================================
-// TAB 2: DATA CENTER OPERATIONS
+// EVENT LISTENERS & INGESTION
 // ==========================================================================
+
 function setupEventListeners() {
-    // Download Dataset
+    // 1. Download & Ingest Dataset
     document.getElementById("btn-load-dataset").addEventListener("click", async () => {
-        showLoading("data-loader-placeholder", "Downloading and unpacking dataset...");
+        showLoading("data-loader-placeholder", "Downloading dataset file from repository...");
         document.getElementById("data-preview-container").style.display = "none";
+        
         try {
-            const res = await fetch("/api/load_data", { method: 'POST' });
-            const result = await res.json();
-            if (result.status === 'success') {
-                renderRawTable(result.preview);
-                showToast("Dataset loaded successfully!");
-                fetchStatus();
-            } else {
-                showToast(result.message, true);
-                document.getElementById("data-loader-placeholder").style.display = "none";
-            }
+            raw_data = await loadDatasetFromGithub();
+            renderRawTable(raw_data.slice(0, 10));
+            showToast("Raw SMS dataset loaded successfully!");
+            syncLocalWorkspaceStatus();
         } catch (err) {
             console.error(err);
-            showToast("Server error downloading dataset.", true);
+            showToast("Failed to fetch dataset. Make sure data/SMSSpamCollection exists.", true);
             document.getElementById("data-loader-placeholder").style.display = "none";
         }
     });
     
-    // Clean Dataset
-    document.getElementById("btn-clean-dataset").addEventListener("click", async () => {
+    // 2. Clean Dataset
+    document.getElementById("btn-clean-dataset").addEventListener("click", () => {
+        if (!raw_data) return;
+        
         const statusMsg = document.getElementById("clean-status-message");
-        statusMsg.textContent = "Processing SMS corpora (stemming and filtering stopwords)...";
+        statusMsg.textContent = "Stemming and cleaning SMS documents...";
         statusMsg.style.display = "block";
-        showLoading("clean-loader-placeholder", "Running cleaning algorithms...");
+        
+        showLoading("clean-loader-placeholder", "Executing preprocessor pipeline...");
         document.getElementById("cleaned-preview-container").style.display = "none";
         
-        try {
-            const res = await fetch("/api/clean_data", { method: 'POST' });
-            const result = await res.json();
-            if (result.status === 'success') {
-                statusMsg.textContent = "Preprocessing pipeline execution complete!";
-                renderCleanedTable(result.preview);
-                showToast("Data preprocessing completed!");
-                fetchStatus();
-            } else {
-                showToast(result.message, true);
+        // Use settimeout to avoid freezing UI thread
+        setTimeout(() => {
+            try {
+                cleaned_data = raw_data.map(row => {
+                    return {
+                        label: row.label,
+                        message: row.message,
+                        cleaned_message: cleanText(row.message)
+                    };
+                });
+                
+                statusMsg.textContent = "Data preprocessing complete!";
+                renderCleanedTable(cleaned_data.slice(0, 5));
+                showToast("All text cleaned and stemmed!");
+                syncLocalWorkspaceStatus();
+            } catch (err) {
+                console.error(err);
+                showToast("Error during dataset cleaning.", true);
                 statusMsg.style.display = "none";
                 document.getElementById("clean-loader-placeholder").style.display = "none";
             }
-        } catch (err) {
-            console.error(err);
-            showToast("Server error preprocessing data.", true);
-            statusMsg.style.display = "none";
-            document.getElementById("clean-loader-placeholder").style.display = "none";
-        }
+        }, 100);
     });
     
-    // Sandbox Live Preprocessor Demo (Debounced)
+    // 3. Regex Sandbox Demo
     const sandboxInput = document.getElementById("sandbox-input");
-    let sandboxTimeout = null;
     sandboxInput.addEventListener("input", () => {
-        clearTimeout(sandboxTimeout);
-        sandboxTimeout = setTimeout(async () => {
-            const text = sandboxInput.value;
-            if (!text.trim()) {
-                document.getElementById("sandbox-output").textContent = "";
-                return;
-            }
-            try {
-                const res = await fetch("/api/preprocess_demo", {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
-                });
-                const result = await res.json();
-                if (result.cleaned) {
-                    document.getElementById("sandbox-output").textContent = result.cleaned;
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        }, 300);
+        const text = sandboxInput.value;
+        document.getElementById("sandbox-output").textContent = cleanText(text);
     });
     
-    // Hyperparameter configuration display syncs
+    // Hyperparameter sync
     const featsRange = document.getElementById("range-features");
     const splitRange = document.getElementById("range-split");
     
@@ -409,54 +853,68 @@ function setupEventListeners() {
         document.getElementById("label-split").textContent = splitRange.value;
     });
     
-    // Model training
-    document.getElementById("btn-train-model").addEventListener("click", async () => {
-        const modelType = document.getElementById("select-model").value;
-        const maxFeatures = featsRange.value;
-        const testSplit = splitRange.value;
+    // 4. Model Training Lab
+    document.getElementById("btn-train-model").addEventListener("click", () => {
+        if (!cleaned_data) return;
+        
+        const mType = document.getElementById("select-model").value;
+        if (mType !== 'naive_bayes') {
+            showToast("Running Naive Bayes (Logistic Regression/Random Forest require Python server).");
+        }
+        
+        const maxFeatures = parseInt(featsRange.value);
+        const splitRatio = parseFloat(splitRange.value) / 100.0;
         
         const loader = document.getElementById("model-metrics-row");
         loader.innerHTML = `
             <div class="glass-card spinner-wrapper" style="grid-column: 1 / -1;">
                 <div class="spinner"></div>
-                <p class="text-muted font-bold">Training ${modelType.toUpperCase()} classifier...</p>
+                <p class="text-muted font-bold">Training Multinomial Naive Bayes classifier in-browser...</p>
             </div>
         `;
         loader.style.display = "grid";
         document.getElementById("model-charts-row").style.display = "none";
         document.getElementById("classification-report-card").style.display = "none";
         
-        try {
-            const res = await fetch("/api/train", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model_type: modelType,
-                    max_features: maxFeatures,
-                    test_split: testSplit
-                })
-            });
-            const result = await res.json();
-            if (result.status === 'success') {
-                showToast("Classifier training and serialization complete!");
-                // Redraw UI with training results
-                renderModelResults(result.metrics);
-                fetchStatus();
-            } else {
-                showToast(result.message, true);
+        setTimeout(() => {
+            try {
+                // Seeded Split
+                const split = stratifiedSplit(cleaned_data, splitRatio, 42);
+                
+                // Fit TF-IDF Vectorizer
+                vectorizer = new TfidfVectorizer(maxFeatures);
+                vectorizer.fit(split.train.map(d => d.cleaned_message));
+                
+                // Vectorize split
+                const X_train = split.train.map(d => vectorizer.transform(d.cleaned_message));
+                const y_train = split.train.map(d => d.label === 'spam' ? 1 : 0);
+                
+                // Train NB
+                trained_model = new MultinomialNB();
+                trained_model.fit(X_train, y_train);
+                
+                // Evaluate
+                metrics = evaluateModel(trained_model, vectorizer, split.test);
+                model_name = 'naive_bayes';
+                
+                // Save locally
+                saveModelToLocalStorage(trained_model, vectorizer, model_name, metrics);
+                
+                showToast("Classifier training and caching complete!");
+                renderModelResults(metrics);
+                syncLocalWorkspaceStatus();
+            } catch (err) {
+                console.error(err);
+                showToast("Model training failed.", true);
                 loader.style.display = "none";
             }
-        } catch (err) {
-            console.error(err);
-            showToast("Server error during training.", true);
-            loader.style.display = "none";
-        }
+        }, 100);
     });
     
-    // Playground SMS Classification
-    document.getElementById("btn-predict").addEventListener("click", runPrediction);
+    // 5. Prediction
+    document.getElementById("btn-predict").addEventListener("click", runLivePrediction);
     
-    // Presets in playground
+    // Preset Buttons
     document.getElementById("preset-ham").addEventListener("click", () => {
         loadPresetText("Hey buddy, are we still meeting for lunch today at 1 PM? Let me know.");
     });
@@ -470,7 +928,6 @@ function setupEventListeners() {
 
 function renderRawTable(preview) {
     document.getElementById("data-loader-placeholder").style.display = "none";
-    const container = document.getElementById("data-preview-container");
     const tbody = document.getElementById("table-raw-preview").querySelector("tbody");
     tbody.innerHTML = "";
     
@@ -484,12 +941,11 @@ function renderRawTable(preview) {
         tbody.appendChild(tr);
     });
     
-    container.style.display = "block";
+    document.getElementById("data-preview-container").style.display = "block";
 }
 
 function renderCleanedTable(preview) {
     document.getElementById("clean-loader-placeholder").style.display = "none";
-    const container = document.getElementById("cleaned-preview-container");
     const tbody = document.getElementById("table-cleaned-preview").querySelector("tbody");
     tbody.innerHTML = "";
     
@@ -504,59 +960,74 @@ function renderCleanedTable(preview) {
         tbody.appendChild(tr);
     });
     
-    container.style.display = "block";
+    document.getElementById("cleaned-preview-container").style.display = "block";
 }
 
 // ==========================================================================
-// TAB 3: EDA INSIGHTS & CHART RENDERING
+// TAB 3: INSIGHTS (EDA)
 // ==========================================================================
-async function fetchInsights() {
-    try {
-        const res = await fetch("/api/insights");
-        if (res.status === 400) {
-            // Locked
-            return;
-        }
-        const data = await res.json();
-        
-        // Populate stats
-        const total = data.ham_count + data.spam_count;
-        const hamPct = Math.round((data.ham_count / total) * 100);
-        const spamPct = Math.round((data.spam_count / total) * 100);
-        
-        document.getElementById("eda-ham-count").textContent = data.ham_count.toLocaleString();
-        document.getElementById("eda-ham-pct").textContent = `${hamPct}%`;
-        document.getElementById("eda-spam-count").textContent = data.spam_count.toLocaleString();
-        document.getElementById("eda-spam-pct").textContent = `${spamPct}%`;
-        
-        document.getElementById("eda-ham-len").textContent = `${data.avg_ham_len} ch`;
-        document.getElementById("eda-spam-len").textContent = `${data.avg_spam_len} ch`;
-        
-        // Word Clouds Source Update (Cache Buster)
-        const t = Date.now();
-        document.getElementById("img-spam-wordcloud").src = `/api/wordcloud/spam?t=${t}`;
-        document.getElementById("img-ham-wordcloud").src = `/api/wordcloud/ham?t=${t}`;
-        
-        // Plot Charts
-        renderClassRatioChart(data.ham_count, data.spam_count);
-        renderLengthHistogram(data.ham_lengths, data.spam_lengths);
-        renderWordsBarChart('spam', data.top_spam_words);
-        renderWordsBarChart('ham', data.top_ham_words);
-        
-    } catch (err) {
-        console.error("Failed to load insights:", err);
-    }
+
+function renderInsightsTab() {
+    if (!cleaned_data) return;
+    
+    // In-memory calculations
+    const hamMsgs = cleaned_data.filter(d => d.label === 'ham');
+    const spamMsgs = cleaned_data.filter(d => d.label === 'spam');
+    
+    const hamCount = hamMsgs.length;
+    const spamCount = spamMsgs.length;
+    const total = hamCount + spamCount;
+    
+    const hamPct = Math.round((hamCount / total) * 100);
+    const spamPct = Math.round((spamCount / total) * 100);
+    
+    const avgHamLen = hamMsgs.reduce((sum, d) => sum + d.message.length, 0) / hamCount;
+    const avgSpamLen = spamMsgs.reduce((sum, d) => sum + d.message.length, 0) / spamCount;
+    
+    document.getElementById("eda-ham-count").textContent = hamCount.toLocaleString();
+    document.getElementById("eda-ham-pct").textContent = `${hamPct}%`;
+    document.getElementById("eda-spam-count").textContent = spamCount.toLocaleString();
+    document.getElementById("eda-spam-pct").textContent = `${spamPct}%`;
+    document.getElementById("eda-ham-len").textContent = `${avgHamLen.toFixed(1)} ch`;
+    document.getElementById("eda-spam-len").textContent = `${avgSpamLen.toFixed(1)} ch`;
+    
+    // Top Words calculations
+    const spamWords = [];
+    spamMsgs.forEach(d => { if (d.cleaned_message) spamWords.push(...d.cleaned_message.split(" ")); });
+    const hamWords = [];
+    hamMsgs.forEach(d => { if (d.cleaned_message) hamWords.push(...d.cleaned_message.split(" ")); });
+    
+    const topSpamWords = getWordFrequencies(spamWords, 15);
+    const topHamWords = getWordFrequencies(hamWords, 15);
+    
+    // Plot Charts
+    renderClassRatioChart(hamCount, spamCount);
+    renderLengthHistogram(hamMsgs.map(d => d.message.length), spamMsgs.map(d => d.message.length));
+    renderWordsBarChart('spam', topSpamWords);
+    renderWordsBarChart('ham', topHamWords);
+    
+    // Render dynamic JS WordClouds
+    renderClientWordCloud("div-spam-wordcloud", getWordFrequencies(spamWords, 40), "spam");
+    renderClientWordCloud("div-ham-wordcloud", getWordFrequencies(hamWords, 40), "ham");
+}
+
+function getWordFrequencies(wordsArray, limit = 15) {
+    const counts = {};
+    wordsArray.forEach(w => {
+        if (w.trim()) counts[w] = (counts[w] || 0) + 1;
+    });
+    return Object.keys(counts)
+        .map(w => [w, counts[w]])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
 }
 
 function destroyChart(id) {
-    if (charts[id]) {
-        charts[id].destroy();
-    }
+    if (charts[id]) charts[id].destroy();
 }
 
 function renderClassRatioChart(ham, spam) {
     destroyChart('class-ratio');
-    
     const ctx = document.getElementById("chart-class-distribution").getContext("2d");
     charts['class-ratio'] = new Chart(ctx, {
         type: 'doughnut',
@@ -585,13 +1056,10 @@ function renderClassRatioChart(ham, spam) {
 
 function renderLengthHistogram(hamLengths, spamLengths) {
     destroyChart('length-dist');
-    
-    // Create bins from 0 to 200, steps of 10
     const binSize = 10;
     const maxVal = 200;
     const binsCount = maxVal / binSize;
     const labels = [];
-    
     for (let i = 0; i < binsCount; i++) {
         labels.push(`${i * binSize}-${(i + 1) * binSize}`);
     }
@@ -601,15 +1069,12 @@ function renderLengthHistogram(hamLengths, spamLengths) {
     const spamBins = new Array(binsCount + 1).fill(0);
     
     hamLengths.forEach(len => {
-        const binIndex = Math.floor(len / binSize);
-        if (binIndex >= binsCount) hamBins[binsCount]++;
-        else hamBins[binIndex]++;
+        const idx = Math.floor(len / binSize);
+        if (idx >= binsCount) hamBins[binsCount]++; else hamBins[idx]++;
     });
-    
     spamLengths.forEach(len => {
-        const binIndex = Math.floor(len / binSize);
-        if (binIndex >= binsCount) spamBins[binsCount]++;
-        else spamBins[binIndex]++;
+        const idx = Math.floor(len / binSize);
+        if (idx >= binsCount) spamBins[binsCount]++; else spamBins[idx]++;
     });
     
     const ctx = document.getElementById("chart-length-distribution").getContext("2d");
@@ -618,41 +1083,18 @@ function renderLengthHistogram(hamLengths, spamLengths) {
         data: {
             labels: labels,
             datasets: [
-                {
-                    label: 'Ham Lengths',
-                    data: hamBins,
-                    backgroundColor: 'rgba(16, 185, 129, 0.65)',
-                    borderColor: '#10b981',
-                    borderWidth: 1
-                },
-                {
-                    label: 'Spam Lengths',
-                    data: spamBins,
-                    backgroundColor: 'rgba(244, 63, 94, 0.65)',
-                    borderColor: '#f43f5e',
-                    borderWidth: 1
-                }
+                { label: 'Ham Lengths', data: hamBins, backgroundColor: 'rgba(16, 185, 129, 0.65)', borderColor: '#10b981', borderWidth: 1 },
+                { label: 'Spam Lengths', data: spamBins, backgroundColor: 'rgba(244, 63, 94, 0.65)', borderColor: '#f43f5e', borderWidth: 1 }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { color: '#9ca3af' }
-                },
-                y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#9ca3af' }
-                }
+                x: { grid: { display: false }, ticks: { color: '#9ca3af' } },
+                y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } }
             },
-            plugins: {
-                legend: {
-                    position: 'top',
-                    labels: { color: '#f3f4f6' }
-                }
-            }
+            plugins: { legend: { position: 'top', labels: { color: '#f3f4f6' } } }
         }
     });
 }
@@ -670,40 +1112,78 @@ function renderWordsBarChart(label, wordCounts) {
         type: 'bar',
         data: {
             labels: words,
-            datasets: [{
-                label: 'Occurrences',
-                data: counts,
-                backgroundColor: color,
-                borderRadius: 5,
-                borderWidth: 0
-            }]
+            datasets: [{ label: 'Occurrences', data: counts, backgroundColor: color, borderRadius: 5, borderWidth: 0 }]
         },
         options: {
             indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#9ca3af' }
-                },
-                y: {
-                    grid: { display: false },
-                    ticks: { color: '#f3f4f6', font: { weight: 500 } }
-                }
+                x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } },
+                y: { grid: { display: false }, ticks: { color: '#f3f4f6', font: { weight: 500 } } }
             },
-            plugins: {
-                legend: { display: false }
-            }
+            plugins: { legend: { display: false } }
         }
     });
 }
 
+function renderClientWordCloud(containerId, wordCounts, labelType) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+    
+    // Setup flex wrap wrapping
+    container.style.display = "flex";
+    container.style.flexWrap = "wrap";
+    container.style.justifyContent = "center";
+    container.style.alignItems = "center";
+    container.style.gap = "8px 12px";
+    
+    const topWords = wordCounts.slice(0, 35);
+    const shuffled = [...topWords].sort(() => Math.random() - 0.5);
+    
+    const maxCount = Math.max(...topWords.map(w => w[1]));
+    const minCount = Math.min(...topWords.map(w => w[1])) || 1;
+    
+    shuffled.forEach(item => {
+        const word = item[0];
+        const count = item[1];
+        
+        const norm = maxCount === minCount ? 1 : (count - minCount) / (maxCount - minCount);
+        const fontSize = 0.85 + norm * 1.5; // rem (0.85rem to 2.35rem)
+        
+        const span = document.createElement("span");
+        const opacity = 0.5 + norm * 0.5; // 0.5 to 1.0
+        
+        span.style.fontSize = `${fontSize}rem`;
+        span.style.fontWeight = norm > 0.6 ? "700" : (norm > 0.3 ? "600" : "400");
+        span.style.opacity = opacity;
+        
+        if (labelType === 'spam') {
+            span.style.color = `rgba(244, 63, 94, ${opacity})`;
+            span.style.textShadow = `0 2px 8px rgba(244, 63, 94, ${0.15 * norm})`;
+        } else {
+            span.style.color = `rgba(16, 185, 129, ${opacity})`;
+            span.style.textShadow = `0 2px 8px rgba(16, 185, 129, ${0.15 * norm})`;
+        }
+        
+        span.style.transition = "transform 0.2s ease";
+        span.style.cursor = "pointer";
+        span.textContent = word;
+        span.title = `Count: ${count}`;
+        
+        // Micro animation on hover
+        span.addEventListener("mouseenter", () => { span.style.transform = "scale(1.15)"; });
+        span.addEventListener("mouseleave", () => { span.style.transform = "scale(1.0)"; });
+        
+        container.appendChild(span);
+    });
+}
+
 // ==========================================================================
-// TAB 4: MODEL LAB RESULTS
+// TAB 4: MODEL EVALUATION RENDERERS
 // ==========================================================================
+
 function renderModelResults(m) {
-    // Restore raw layout structure for metrics
     const metricsRow = document.getElementById("model-metrics-row");
     metricsRow.innerHTML = `
         <div class="glass-card metric-item text-center">
@@ -724,19 +1204,17 @@ function renderModelResults(m) {
         </div>
     `;
     
-    // Fill Cards
     document.getElementById("metric-accuracy").textContent = `${(m.accuracy * 100).toFixed(2)}%`;
     document.getElementById("metric-precision").textContent = `${(m.precision * 100).toFixed(2)}%`;
     document.getElementById("metric-recall").textContent = `${(m.recall * 100).toFixed(2)}%`;
     document.getElementById("metric-f1").textContent = `${(m.f1_score * 100).toFixed(2)}%`;
     
-    // Confusion Matrix Cells
-    document.getElementById("cm-th-ph").textContent = m.confusion_matrix[0][0]; // True Ham
-    document.getElementById("cm-th-ps").textContent = m.confusion_matrix[0][1]; // False Spam (False Positive)
-    document.getElementById("cm-ts-ph").textContent = m.confusion_matrix[1][0]; // False Ham (False Negative)
-    document.getElementById("cm-ts-ps").textContent = m.confusion_matrix[1][1]; // True Spam
+    document.getElementById("cm-th-ph").textContent = m.confusion_matrix[0][0]; // TN
+    document.getElementById("cm-th-ps").textContent = m.confusion_matrix[0][1]; // FP
+    document.getElementById("cm-ts-ph").textContent = m.confusion_matrix[1][0]; // FN
+    document.getElementById("cm-ts-ps").textContent = m.confusion_matrix[1][1]; // TP
     
-    // Classification Report Table
+    // Report Table
     const tbody = document.getElementById("table-class-report").querySelector("tbody");
     tbody.innerHTML = "";
     
@@ -746,7 +1224,6 @@ function renderModelResults(m) {
     classes.forEach(c => {
         if (!report[c]) return;
         const tr = document.createElement("tr");
-        
         if (c === 'accuracy') {
             tr.innerHTML = `
                 <td class="font-bold">Accuracy</td>
@@ -756,9 +1233,9 @@ function renderModelResults(m) {
                 <td>${report['macro avg'].support}</td>
             `;
         } else {
-            let rowLabel = c.charAt(0).toUpperCase() + c.slice(1);
+            let labelStr = c.charAt(0).toUpperCase() + c.slice(1);
             tr.innerHTML = `
-                <td class="font-bold">${rowLabel}</td>
+                <td class="font-bold">${labelStr}</td>
                 <td>${(report[c].precision * 100).toFixed(2)}%</td>
                 <td>${(report[c].recall * 100).toFixed(2)}%</td>
                 <td>${(report[c].f1_score * 100).toFixed(2)}%</td>
@@ -768,30 +1245,26 @@ function renderModelResults(m) {
         tbody.appendChild(tr);
     });
     
-    // ROC Curve Chart
-    renderROCCurve(m.roc_curve);
+    renderROCCurveChart(m.roc_curve);
     
-    // Unhide panels
     metricsRow.style.display = "grid";
     document.getElementById("model-charts-row").style.display = "grid";
     document.getElementById("classification-report-card").style.display = "block";
 }
 
-function renderROCCurve(roc) {
+function renderROCCurveChart(roc) {
     destroyChart('roc-curve');
     
-    // Filter down points to ~50 for performance and smooth line drawing
+    // Subsample ROC points for clean line graph
     const limit = 50;
     const step = Math.max(1, Math.floor(roc.fpr.length / limit));
     const fprPoints = [];
     const tprPoints = [];
-    
     for (let i = 0; i < roc.fpr.length; i += step) {
         fprPoints.push(roc.fpr[i]);
         tprPoints.push(roc.tpr[i]);
     }
-    // Ensure final point (1.0, 1.0) is included
-    if (fprPoints[fprPoints.length - 1] !== 1) {
+    if (fprPoints[fprPoints.length - 1] !== 1.0) {
         fprPoints.push(1.0);
         tprPoints.push(1.0);
     }
@@ -814,7 +1287,7 @@ function renderROCCurve(roc) {
                 },
                 {
                     label: 'Random Chance',
-                    data: fprPoints, // Y = X diagonal line
+                    data: fprPoints,
                     borderColor: 'rgba(255,255,255,0.2)',
                     borderWidth: 1,
                     borderDash: [5, 5],
@@ -832,9 +1305,7 @@ function renderROCCurve(roc) {
                     grid: { display: false },
                     ticks: {
                         color: '#9ca3af',
-                        callback: function(val, index) {
-                            return Number(fprPoints[index]).toFixed(2);
-                        }
+                        callback: function(val, index) { return Number(fprPoints[index]).toFixed(2); }
                     },
                     title: { display: true, text: 'False Positive Rate', color: '#f3f4f6' }
                 },
@@ -844,83 +1315,73 @@ function renderROCCurve(roc) {
                     title: { display: true, text: 'True Positive Rate', color: '#f3f4f6' }
                 }
             },
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { color: '#f3f4f6' }
-                }
-            }
+            plugins: { legend: { position: 'bottom', labels: { color: '#f3f4f6' } } }
         }
     });
 }
 
 // ==========================================================================
-// TAB 5: PLAYGROUND INFRENCE
+// TAB 5: PLAYGROUND INFERENCE
 // ==========================================================================
-async function runPrediction() {
+
+function runLivePrediction() {
+    if (!trained_model || !vectorizer) return;
+    
     const message = document.getElementById("predict-input").value;
     if (!message.trim()) {
         showToast("Please enter SMS message text to classify.", true);
         return;
     }
     
-    try {
-        const res = await fetch("/api/predict", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
-        });
-        const data = await res.json();
-        
-        if (data.status === 'error') {
-            showToast(data.message, true);
-            return;
-        }
-        
-        // Render Output Banner
-        const resultBanner = document.getElementById("result-banner");
-        const labelEl = document.getElementById("result-label");
-        const confEl = document.getElementById("result-confidence");
-        
-        if (data.label === 'spam') {
-            resultBanner.className = "banner banner-spam mb-4";
-            labelEl.textContent = "🛡️ CLASSIFIED AS SPAM (WARNING)";
-            confEl.textContent = `${(data.spam_probability * 100).toFixed(2)}%`;
-        } else {
-            resultBanner.className = "banner banner-ham mb-4";
-            labelEl.textContent = "✅ CLASSIFIED AS HAM (LEGITIMATE)";
-            confEl.textContent = `${(data.ham_probability * 100).toFixed(2)}%`;
-        }
-        
-        // Render Tags
-        renderKeywordsTags(data.words_in_vocab, data.words_not_in_vocab);
-        document.getElementById("predict-cleaned-msg").textContent = data.cleaned_msg || "...";
-        
-        // Render Probability Chart
-        renderPredictionProbabilities(data.ham_probability, data.spam_probability);
-        
-        // Show Panels
-        document.getElementById("predict-result-card").style.display = "block";
-        document.getElementById("predict-keywords-card").style.display = "block";
-        
-        showToast("Classification inference executed!");
-    } catch(err) {
-        console.error(err);
-        showToast("Server error during inference prediction.", true);
+    const cleaned = cleanText(message);
+    const vector = vectorizer.transform(cleaned);
+    
+    const predClass = trained_model.predict(vector);
+    const probs = trained_model.predictProba(vector);
+    const hamProb = probs[0];
+    const spamProb = probs[1];
+    
+    const banner = document.getElementById("result-banner");
+    const labelEl = document.getElementById("result-label");
+    const confEl = document.getElementById("result-confidence");
+    
+    if (predClass === 1) {
+        banner.className = "banner banner-spam mb-4";
+        labelEl.textContent = "🛡️ CLASSIFIED AS SPAM (WARNING)";
+        confEl.textContent = `${(spamProb * 100).toFixed(2)}%`;
+    } else {
+        banner.className = "banner banner-ham mb-4";
+        labelEl.textContent = "✅ CLASSIFIED AS HAM (LEGITIMATE)";
+        confEl.textContent = `${(hamProb * 100).toFixed(2)}%`;
     }
+    
+    // Render vocabulary word tags
+    const vocab = vectorizer.vocabulary;
+    const words = cleaned.split(" ").filter(w => w.length > 0);
+    const wordsIn = words.filter(w => vocab[w] !== undefined);
+    const wordsOut = words.filter(w => vocab[w] === undefined);
+    
+    renderKeywordsTags(wordsIn, wordsOut);
+    document.getElementById("predict-cleaned-msg").textContent = cleaned || "(Empty after processing)";
+    
+    // Render prediction chart
+    renderPredictionProbabilities(hamProb, spamProb);
+    
+    document.getElementById("predict-result-card").style.display = "block";
+    document.getElementById("predict-keywords-card").style.display = "block";
+    
+    showToast("Classification prediction complete!");
 }
 
 function renderKeywordsTags(wordsIn, wordsOut) {
     const inBox = document.getElementById("predict-tags-in");
     const outBox = document.getElementById("predict-tags-out");
-    
     inBox.innerHTML = "";
     outBox.innerHTML = "";
     
     if (wordsIn.length === 0) {
         inBox.innerHTML = '<span class="text-muted sub-text">None</span>';
     } else {
-        // Remove duplicates for tag lists
         [...new Set(wordsIn)].forEach(w => {
             const span = document.createElement("span");
             span.className = "tag tag-active";
@@ -943,7 +1404,6 @@ function renderKeywordsTags(wordsIn, wordsOut) {
 
 function renderPredictionProbabilities(hamProb, spamProb) {
     destroyChart('predict-prob');
-    
     const ctx = document.getElementById("chart-prediction-prob").getContext("2d");
     charts['predict-prob'] = new Chart(ctx, {
         type: 'bar',
@@ -962,32 +1422,23 @@ function renderPredictionProbabilities(hamProb, spamProb) {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: {
-                    min: 0,
-                    max: 100,
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#9ca3af', callback: val => `${val}%` }
-                },
-                y: {
-                    grid: { display: false },
-                    ticks: { color: '#f3f4f6', font: { weight: 600 } }
-                }
+                x: { min: 0, max: 100, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', callback: val => `${val}%` } },
+                y: { grid: { display: false }, ticks: { color: '#f3f4f6', font: { weight: 600 } } }
             },
-            plugins: {
-                legend: { display: false }
-            }
+            plugins: { legend: { display: false } }
         }
     });
 }
 
 function loadPresetText(text) {
     document.getElementById("predict-input").value = text;
-    runPrediction();
+    runLivePrediction();
 }
 
 // ==========================================================================
 // STRING ESCAPING UTILITY
 // ==========================================================================
+
 function escapeHtml(str) {
     if (!str) return '';
     return str
